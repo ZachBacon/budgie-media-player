@@ -24,6 +24,7 @@
 #define budgie_db_h
 
 #include <glib-object.h>
+#include <gdbm.h>
 
 typedef struct _BudgieDB BudgieDB;
 typedef struct _BudgieDBClass   BudgieDBClass;

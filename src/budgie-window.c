@@ -23,13 +23,14 @@
 #include "config.h"
 
 #include <string.h>
-#include <gdk/gdkx.h>
+#include <gdk/gdk.h>
 #include <gst/video/videooverlay.h>
 #include <gst/gstbus.h>
 
 #include "common.h"
 #include "budgie-window.h"
 #include "budgie-media-view.h"
+#include "db/budgie-db.h"
 
 /* Private storage */
 struct _BudgieWindowPrivate {
@@ -163,7 +164,7 @@ static void budgie_window_init(BudgieWindow *self)
         gtk_window_set_default_size(GTK_WINDOW(window), 950, 550);
         gtk_window_set_position(GTK_WINDOW(window), GTK_WIN_POS_CENTER);
         gtk_window_set_icon_name(GTK_WINDOW(window), "budgie");
-        gtk_window_set_wmclass(GTK_WINDOW(window), "Budgie", "Budgie");
+        /*gtk_window_set_wmclass(GTK_WINDOW(window), "Budgie", "Budgie"); */
         g_signal_connect(window, "destroy", G_CALLBACK(gtk_main_quit), NULL);
 
         /* Icon theme for button utility */
@@ -715,7 +716,7 @@ static void realize_cb(GtkWidget *widg, gpointer userdata)
         if (!gdk_window_ensure_native(window)) {
                 g_error("Unable to initialize video");
         }
-        self->priv->window_handle = GDK_WINDOW_XID(window);
+        self->priv->window_handle = (guintptr)window;
         gst_video_overlay_set_window_handle(GST_VIDEO_OVERLAY(self->gst_player), self->priv->window_handle);
         self->video_realized = TRUE;
 }
