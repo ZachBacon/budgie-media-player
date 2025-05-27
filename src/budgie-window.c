@@ -698,10 +698,10 @@ static gpointer load_media(gpointer data)
 }
 
 static gboolean draw_cb(GtkWidget *widget, cairo_t *cr, gpointer userdata) {
-        BudgieWindow *self;
+        //BudgieWindow *self;
 
-        self = BUDGIE_WINDOW(userdata);
-        gst_video_overlay_expose(GST_VIDEO_OVERLAY(self->gst_player));
+        //self = BUDGIE_WINDOW(userdata);
+        /*gst_video_overlay_expose(GST_VIDEO_OVERLAY(self->gst_player)); */
         return FALSE;
 }
 

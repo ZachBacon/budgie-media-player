@@ -16,6 +16,7 @@ PKG_CHECK_MODULES([GIO], [gio-2.0 >= 2.40.0])
 PKG_CHECK_MODULES([GTK3], [gtk+-3.0 >= 3.24.0])
 # We require GStreamer 1.0
 PKG_CHECK_MODULES([GSTREAMER], [gstreamer-1.0 >= 1.0.10])
+PKG_CHECK_MODULES([GSTVIDEO], [gstreamer-video-1.0 >= 1.0.10])
 
 # Taglib for .. tags
 PKG_CHECK_MODULES([TAGLIB], [taglib_c >= 1.9.1])

@@ -624,3 +624,11 @@ gint budgie_db_sort(gconstpointer a, gconstpointer b)
 
         return g_ascii_strcasecmp(m1->title, m2->title);
 }
+
+void budgie_db_begin_transaction(BudgieDB *self) {
+    // No-op: Transaction support not implemented
+}
+
+void budgie_db_end_transaction(BudgieDB *self) {
+    // No-op: Transaction support not implemented
+}

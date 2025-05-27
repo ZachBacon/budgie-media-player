@@ -38,11 +38,13 @@ budgie_media_player_SOURCES = \
 budgie_media_player_CFLAGS = \
 	$(GTK3_CFLAGS) \
 	$(GSTREAMER_CFLAGS) \
+	$(GSTVIDEO_CFLAGS) \
 	$(TAGLIB_FLAGS) \
 	$(AM_CFLAGS)
 
 budgie_media_player_LDADD = \
 	$(GTK3_LIBS) \
 	$(GSTREAMER_LIBS) \
+	$(GSTVIDEO_LIBS) \
 	$(TAGLIB_LIBS) \
 	libbudgiedb.la
