@@ -24,7 +24,6 @@
 
 #include <string.h>
 #include <gdk/gdk.h>
-#include <gst/video/videooverlay.h>
 #include <gst/gstbus.h>
 
 #include "common.h"
@@ -43,7 +42,6 @@ struct _BudgieWindowPrivate {
         gboolean random;
         gboolean force_aspect;
         gboolean full_screen;
-        guintptr window_handle;
 
         /* Error stuffs */
         GtkWidget *error_revealer;
@@ -64,8 +62,6 @@ static void play_cb(GtkWidget *widget, gpointer userdata);
 static void pause_cb(GtkWidget *widget, gpointer userdata);
 static void next_cb(GtkWidget *widget, gpointer userdata);
 static void prev_cb(GtkWidget *widget, gpointer userdata);
-static gboolean draw_cb(GtkWidget *widget, cairo_t *cr, gpointer userdata);
-static void realize_cb(GtkWidget *widget, gpointer userdata);
 static gboolean refresh_cb(gpointer userdata);
 static void reload_cb(GtkWidget *widget, gpointer userdata);
 static void full_screen_cb(GtkWidget *widget, gpointer userdata);
@@ -113,8 +109,9 @@ static void budgie_window_init(BudgieWindow *self)
         GtkWidget *layout;
         GtkWidget *settings_view;
         GstBus *bus;
+        GstElement *video_sink = NULL;
+        GstElement *gl_sink = NULL;
         GList *tracks;
-        GdkVisual *visual;
         guint length;
         gchar **media_dirs = NULL;
         const gchar *dirs[3];
@@ -158,7 +155,6 @@ static void budgie_window_init(BudgieWindow *self)
         /* Initialize our window */
         window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
         self->window = window;
-        visual = gtk_widget_get_visual(window);
 
         /* Set our window up */
         gtk_window_set_title(GTK_WINDOW(window), "Music Player");
@@ -288,13 +284,38 @@ static void budgie_window_init(BudgieWindow *self)
         gtk_stack_add_named(GTK_STACK(stack), view, "view");
 
         /* Video */
-        video = gtk_drawing_area_new();
+        self->gst_player = gst_element_factory_make("playbin", "player");
+
+        /* Prefer GL rendering, but gracefully fall back to the software
+         * gtksink if no GL context is available (e.g. missing/older
+         * drivers). Both expose a "widget" property we embed directly -
+         * no native window handles, so this works unchanged on X11,
+         * Wayland, Windows and macOS. */
+        gl_sink = gst_element_factory_make("gtkglsink", "gtkglsink");
+        if (gl_sink) {
+                video_sink = gst_element_factory_make("glsinkbin", "glsinkbin");
+        }
+        if (gl_sink && video_sink) {
+                g_object_set(video_sink, "sink", gl_sink, NULL);
+        } else {
+                if (gl_sink) {
+                        gst_object_unref(gl_sink);
+                }
+                if (video_sink) {
+                        gst_object_unref(video_sink);
+                }
+                video_sink = gst_element_factory_make("gtksink", "gtksink");
+                gl_sink = video_sink;
+        }
+        if (!video_sink) {
+                g_error("Unable to create a GTK video sink");
+        }
+        g_object_set(self->gst_player, "video-sink", video_sink, NULL);
+
+        g_object_get(gl_sink, "widget", &video, NULL);
         self->video = video;
-        self->priv->window_handle = 0;
         gtk_stack_add_named(GTK_STACK(stack), video, "video");
-        gtk_widget_set_visual(video, visual);
-        g_signal_connect(video, "realize", G_CALLBACK(realize_cb), self);
-        g_signal_connect(video, "draw", G_CALLBACK(draw_cb), self);
+        g_object_unref(video);
 
         /* Hook up events for video box */
         g_signal_connect(video, "motion-notify-event",
@@ -320,10 +341,7 @@ static void budgie_window_init(BudgieWindow *self)
                 G_CALLBACK(search_changed_cb), self);
 
         /* Initialise gstreamer */
-        self->gst_player = gst_element_factory_make("playbin", "player");
         bus = gst_element_get_bus(self->gst_player);
-
-        gst_bus_enable_sync_message_emission(bus);
         gst_bus_add_signal_watch(bus);
         g_signal_connect(bus, "message::eos", G_CALLBACK(_gst_eos_cb), self);
         g_signal_connect(bus, "message::error", G_CALLBACK(_gst_error_cb), self);
@@ -429,9 +447,6 @@ static void play_cb(GtkWidget *widget, gpointer userdata)
         /* Switch to video view for video content */
         if (g_str_has_prefix(media->mime, "video/")) {
                 next_child = "video";
-                if (!self->video_realized) {
-                        gtk_widget_realize(self->video);
-                }
                 budgie_control_bar_set_show_video(BUDGIE_CONTROL_BAR(self->toolbar), TRUE);
         } else {
                 next_child = "view";
@@ -583,7 +598,7 @@ static void aspect_cb(GtkWidget *widget, gpointer userdata)
 
         self = BUDGIE_WINDOW(userdata);
         g_object_set(self->gst_player, "force-aspect-ratio", self->priv->force_aspect, NULL);
-        /* Otherwise we get dirty regions on our drawing area */
+        /* Force a relayout so any letterboxing change takes effect immediately */
         gtk_widget_queue_draw(self->window);
 }
 
@@ -697,30 +712,6 @@ static gpointer load_media(gpointer data)
         g_object_set(BUDGIE_MEDIA_VIEW(self->view), "database", self->db, NULL);
 
         return NULL;
-}
-
-static gboolean draw_cb(GtkWidget *widget, cairo_t *cr, gpointer userdata) {
-        BudgieWindow *self;
-
-        self = BUDGIE_WINDOW(userdata);
-        gst_video_overlay_expose(GST_VIDEO_OVERLAY(self->gst_player));
-        return FALSE;
-}
-
-
-static void realize_cb(GtkWidget *widg, gpointer userdata)
-{
-        BudgieWindow *self;
-        GdkWindow *window;
-
-        self = BUDGIE_WINDOW(userdata);
-        window = gtk_widget_get_window(self->video);
-        if (!gdk_window_ensure_native(window)) {
-                g_error("Unable to initialize video");
-        }
-        self->priv->window_handle = (guintptr)window;
-        gst_video_overlay_set_window_handle(GST_VIDEO_OVERLAY(self->gst_player), self->priv->window_handle);
-        self->video_realized = TRUE;
 }
 
 static gboolean hide_bar(gpointer udata)

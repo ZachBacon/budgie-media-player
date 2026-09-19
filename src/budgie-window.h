@@ -72,7 +72,6 @@ struct _BudgieWindow {
         GtkIconTheme *icon_theme;
 
         GtkWidget *video;
-        gboolean video_realized;
         GtkWidget *stack;
         GtkWidget *toolbar;
 
