@@ -23,7 +23,6 @@
 #include <stdint.h>
 #include <string.h>
 #include <stdlib.h>
-#include <malloc.h>
 
 #include "budgie-db.h"
 
@@ -36,7 +35,7 @@ struct _BudgieDBPrivate {
 G_DEFINE_TYPE_WITH_PRIVATE(BudgieDB, budgie_db, G_TYPE_OBJECT)
 
 /* Private utilities */
-static gboolean budgie_db_serialize(MediaInfo *info, uint8_t **target);
+static gboolean budgie_db_serialize(MediaInfo *info, uint8_t **target, size_t *target_size);
 static gboolean budgie_db_deserialize(uint8_t* source, MediaInfo **target);
 
 /* Boilerplate GObject code */
@@ -131,17 +130,18 @@ void budgie_db_store_media(BudgieDB *self, MediaInfo *info)
 {
         datum value;
         uint8_t *store = NULL;
+        size_t store_size = 0;
 
         g_mutex_lock(&_lock);
         /* Path is the unique key */
         datum key = { (char*)info->path, ((int)strlen(info->path))+1 };
 
-        if (!budgie_db_serialize(info, &store)) {
+        if (!budgie_db_serialize(info, &store, &store_size)) {
                 g_warning("Unable to serialize data!");
                 goto end;
         }
         value.dptr = (char*)store;
-        value.dsize = (int)malloc_usable_size(store);;
+        value.dsize = (int)store_size;
 
         gdbm_store(self->priv->db, key, value, GDBM_REPLACE);
 end:
@@ -348,6 +348,9 @@ gboolean budgie_db_search_field(BudgieDB *self,
                         case MATCH_QUERY_EXACT:
                                 succ = g_str_equal(test, term);
                                 break;
+                        case MATCH_QUERY_CONTAINS:
+                                succ = g_str_match_string(term, test, TRUE);
+                                break;
                         default:
                                 break;
                 }
@@ -366,6 +369,8 @@ next:
                 test = NULL;
                 succ = FALSE;
         }
+        g_mutex_unlock(&_lock);
+
         /* No results */
         if (_results->len < 1) {
                 g_ptr_array_free(_results, TRUE);
@@ -373,12 +378,11 @@ next:
         }
         ret = TRUE;
         *results = _results;
-        g_mutex_unlock(&_lock);
         return ret;
 }
 
 /** PRIVATE **/
-static gboolean budgie_db_serialize(MediaInfo *info, uint8_t **target)
+static gboolean budgie_db_serialize(MediaInfo *info, uint8_t **target, size_t *target_size)
 {
         uint8_t* data = NULL;
         gboolean ret = FALSE;
@@ -486,6 +490,7 @@ static gboolean budgie_db_serialize(MediaInfo *info, uint8_t **target)
 
         ret = TRUE;
         *target = data;
+        *target_size = size;
 end:
         if (!ret && data) {
                 free(data);

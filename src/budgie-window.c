@@ -77,6 +77,7 @@ static void toolbar_cb(BudgieControlBar *bar, int action, gboolean toggle, gpoin
 static void seek_cb(BudgieStatusArea *status, gint64 value, gpointer userdata);
 static void media_selected_cb(BudgieMediaView *view, gpointer info, gpointer userdata);
 static void error_dismiss_cb(GtkWidget *widget, gpointer userdata);
+static void search_changed_cb(GtkSearchEntry *entry, gpointer userdata);
 
 /* GStreamer callbacks */
 static void _gst_eos_cb(GstBus *bus, GstMessage *msg, gpointer userdata);
@@ -309,13 +310,14 @@ static void budgie_window_init(BudgieWindow *self)
         gtk_stack_add_named(GTK_STACK(stack), settings_view, "settings");
         self->settings = settings_view;
 
-        /* search button. */
-        search = gtk_button_new_from_icon_name("edit-find-symbolic", GTK_ICON_SIZE_SMALL_TOOLBAR);
-        gtk_button_set_relief(GTK_BUTTON(search), GTK_RELIEF_NONE);
-        /* currently disabled. on account of its not implemeneted.
-         * gtk_header_bar_pack_end(GTK_HEADER_BAR(header), search);*/
+        /* search entry */
+        search = gtk_search_entry_new();
+        gtk_entry_set_placeholder_text(GTK_ENTRY(search), "Search...");
+        gtk_header_bar_pack_end(GTK_HEADER_BAR(header), search);
         gtk_widget_set_margin_end(search, 10);
         self->search = search;
+        g_signal_connect(search, "search-changed",
+                G_CALLBACK(search_changed_cb), self);
 
         /* Initialise gstreamer */
         self->gst_player = gst_element_factory_make("playbin", "player");
@@ -698,10 +700,10 @@ static gpointer load_media(gpointer data)
 }
 
 static gboolean draw_cb(GtkWidget *widget, cairo_t *cr, gpointer userdata) {
-        //BudgieWindow *self;
+        BudgieWindow *self;
 
-        //self = BUDGIE_WINDOW(userdata);
-        /*gst_video_overlay_expose(GST_VIDEO_OVERLAY(self->gst_player)); */
+        self = BUDGIE_WINDOW(userdata);
+        gst_video_overlay_expose(GST_VIDEO_OVERLAY(self->gst_player));
         return FALSE;
 }
 
@@ -874,4 +876,14 @@ static void error_dismiss_cb(GtkWidget *widget, gpointer userdata)
         self = BUDGIE_WINDOW(userdata);
         gtk_widget_hide(self->priv->error_revealer);
         gtk_revealer_set_reveal_child(GTK_REVEALER(self->priv->error_revealer), FALSE);
+}
+
+static void search_changed_cb(GtkSearchEntry *entry, gpointer userdata)
+{
+        BudgieWindow *self;
+        const gchar *term;
+
+        self = BUDGIE_WINDOW(userdata);
+        term = gtk_entry_get_text(GTK_ENTRY(entry));
+        budgie_media_view_search(BUDGIE_MEDIA_VIEW(self->view), term);
 }

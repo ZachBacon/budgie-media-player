@@ -92,6 +92,7 @@ typedef enum {
         MATCH_QUERY_START = 0, /**<Match the start of the search term */
         MATCH_QUERY_END, /**<Match the end of the search term */
         MATCH_QUERY_EXACT, /**<Match if search term is identical */
+        MATCH_QUERY_CONTAINS, /**<Match if search term appears anywhere (case-insensitive) */
         MATCH_QUERY_MAX
 } MatchQuery;
 

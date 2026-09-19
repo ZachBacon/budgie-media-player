@@ -110,4 +110,13 @@ MediaInfo* budgie_media_view_get_info(BudgieMediaView *self,
 void budgie_media_view_set_active(BudgieMediaView *self,
                                   MediaInfo *active);
 
+/**
+ * Search the library for the given term, matching against title, artist
+ * and album, and display the merged results in the tracks list.
+ * An empty or NULL term returns to browsing albums.
+ * @param term Search term
+ */
+void budgie_media_view_search(BudgieMediaView *self,
+                              const gchar *term);
+
 #endif /* budgie_media_view_h */

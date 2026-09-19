@@ -24,6 +24,7 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include <glib/gstdio.h>
 
 #include "budgie-media-view.h"
 #include "budgie-media-label.h"
@@ -49,6 +50,8 @@ static void list_selection_cb(GtkListBox *list, GtkListBoxRow *row,
 static GdkPixbuf *beautify(GdkPixbuf **source,
                            GdkPixbuf *base,
                            GdkPixbuf *overlay);
+static gboolean art_cache_is_fresh(const gchar *cache_path,
+                                   const gchar *source_path);
 
 static void budgie_media_view_get_property(GObject *object,
                                            guint prop_id,
@@ -330,7 +333,7 @@ static gpointer update_db(gpointer userdata)
         GtkListStore *model;
         GPtrArray *albums = NULL;
         GPtrArray *results = NULL;
-        GdkPixbuf *pixbuf;
+        GdkPixbuf *pixbuf, *raw;
         GdkPixbuf *base, *overlay;
         GtkTreeIter iter;
         gchar *album = NULL;
@@ -338,6 +341,7 @@ static gpointer update_db(gpointer userdata)
         MediaInfo *current;
         const gchar *cache;
         gchar *album_id = NULL, *path = NULL;
+        gchar *art_cache_dir = NULL, *cache_name = NULL, *cache_path = NULL;
         int i;
 
         self = BUDGIE_MEDIA_VIEW(userdata);
@@ -355,6 +359,12 @@ static gpointer update_db(gpointer userdata)
         base = gdk_pixbuf_new_from_file(DATADIR "/budgie/album-base.png", NULL);
         overlay = gdk_pixbuf_new_from_file(DATADIR "/budgie/album-overlay.png", NULL);
 
+        /* Cache of already-composited (base+art+overlay) album covers, so
+         * we don't redo the Cairo compositing work for every album on
+         * every single library scan */
+        art_cache_dir = g_strdup_printf("%s/budgie-media-player/album-art", cache);
+        g_mkdir_with_parents(art_cache_dir, 0700);
+
         for (i=0; i < albums->len; i++) {
                 album = (gchar *)albums->pdata[i];
                 /* Try to gain at least one artist */
@@ -366,19 +376,37 @@ static gpointer update_db(gpointer userdata)
                         goto albumfail;
 
                 album_id = albumart_name_for_media(current, "png");
+                /* Canonical (always-.png) name for the composited cover cache,
+                 * independent of whether the raw source art is png or jpeg */
+                cache_name = album_id ? g_strdup(album_id) : NULL;
                 path = g_strdup_printf("%s/media-art/%s", cache, album_id);
                 if (!g_file_test(path, G_FILE_TEST_EXISTS)) {
                         g_free(path);
                         g_free(album_id);
                         album_id = albumart_name_for_media(current, "jpeg");
                         path = g_strdup_printf("%s/media-art/%s", cache, album_id);
-                        g_free(album_id);
                 }
-                pixbuf = gdk_pixbuf_new_from_file(path, NULL);
-                if (!pixbuf)
-                        pixbuf = beautify(NULL, base, overlay);
-                else
-                        pixbuf = beautify(&pixbuf, base, overlay);
+                g_free(album_id);
+
+                pixbuf = NULL;
+                if (cache_name) {
+                        cache_path = g_strdup_printf("%s/%s", art_cache_dir, cache_name);
+                        if (art_cache_is_fresh(cache_path, path))
+                                pixbuf = gdk_pixbuf_new_from_file(cache_path, NULL);
+                }
+                if (!pixbuf) {
+                        raw = gdk_pixbuf_new_from_file(path, NULL);
+                        if (!raw)
+                                pixbuf = beautify(NULL, base, overlay);
+                        else
+                                pixbuf = beautify(&raw, base, overlay);
+                        if (pixbuf && cache_path)
+                                gdk_pixbuf_save(pixbuf, cache_path, "png", NULL, NULL);
+                }
+                g_free(cache_name);
+                cache_name = NULL;
+                g_free(cache_path);
+                cache_path = NULL;
                 /* Pretty label */
                 if (current->band)
                         markup = g_markup_printf_escaped("<big>%s\n<span color='#707070'>%s</span></big>",
@@ -400,6 +428,7 @@ static gpointer update_db(gpointer userdata)
                 if (pixbuf)
                         g_object_unref(pixbuf);
                 g_free(markup);
+                g_free(path);
 
 albumfail:
                 free_media_info(current);
@@ -414,6 +443,7 @@ fail:
         g_ptr_array_free(albums, TRUE);
         g_object_unref(base);
         g_object_unref(overlay);
+        g_free(art_cache_dir);
 
         return NULL;
 }
@@ -679,8 +709,37 @@ static void list_selection_cb(GtkListBox *list, GtkListBoxRow *row,
 }
 
 /**
- * TODO: CACHE!!!
+ * Determine whether a previously-cached composited album cover at
+ * cache_path can still be used, or whether it needs to be regenerated.
+ *
+ * The cache is considered stale if it doesn't exist yet, if the base or
+ * overlay artwork used to build it is newer (e.g. after an app upgrade),
+ * or if the raw source art at source_path is newer than the cached
+ * composite (e.g. the user replaced the album art after the first scan).
  */
+static gboolean art_cache_is_fresh(const gchar *cache_path,
+                                   const gchar *source_path)
+{
+        GStatBuf cache_stat, other_stat;
+
+        if (g_stat(cache_path, &cache_stat) != 0)
+                return FALSE;
+
+        if (g_stat(DATADIR "/budgie/album-base.png", &other_stat) == 0 &&
+                        other_stat.st_mtime > cache_stat.st_mtime)
+                return FALSE;
+
+        if (g_stat(DATADIR "/budgie/album-overlay.png", &other_stat) == 0 &&
+                        other_stat.st_mtime > cache_stat.st_mtime)
+                return FALSE;
+
+        if (source_path && g_stat(source_path, &other_stat) == 0 &&
+                        other_stat.st_mtime > cache_stat.st_mtime)
+                return FALSE;
+
+        return TRUE;
+}
+
 static GdkPixbuf *beautify(GdkPixbuf **source,
                            GdkPixbuf *base,
                            GdkPixbuf *overlay)
@@ -801,4 +860,73 @@ void budgie_media_view_set_active(BudgieMediaView *self,
         self->current_path = g_strdup(active->path);
 
         g_list_free(children);
+}
+
+void budgie_media_view_search(BudgieMediaView *self,
+                              const gchar *term)
+{
+        GPtrArray *by_title = NULL;
+        GPtrArray *by_artist = NULL;
+        GPtrArray *by_album = NULL;
+        GPtrArray *sources[3];
+        GPtrArray *source;
+        GPtrArray *merged;
+        GHashTable *seen;
+        MediaInfo *info;
+        gchar *label_markup;
+        GtkListBoxRow *row;
+        guint i, j;
+
+        if (!term || term[0] == '\0') {
+                /* Empty search; go back to browsing albums */
+                gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(self->albums), TRUE);
+                return;
+        }
+
+        budgie_db_search_field(self->db, MEDIA_QUERY_TITLE,
+                MATCH_QUERY_CONTAINS, (gchar*)term, -1, &by_title);
+        budgie_db_search_field(self->db, MEDIA_QUERY_ARTIST,
+                MATCH_QUERY_CONTAINS, (gchar*)term, -1, &by_artist);
+        budgie_db_search_field(self->db, MEDIA_QUERY_ALBUM,
+                MATCH_QUERY_CONTAINS, (gchar*)term, -1, &by_album);
+
+        sources[0] = by_title;
+        sources[1] = by_artist;
+        sources[2] = by_album;
+
+        /* Merge the three result sets, dropping duplicate tracks that
+         * matched on more than one field */
+        merged = g_ptr_array_new();
+        seen = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
+
+        for (i = 0; i < 3; i++) {
+                source = sources[i];
+                if (!source) {
+                        continue;
+                }
+                for (j = 0; j < source->len; j++) {
+                        info = source->pdata[j];
+                        if (g_hash_table_contains(seen, info->path)) {
+                                free_media_info(info);
+                        } else {
+                                g_hash_table_add(seen, g_strdup(info->path));
+                                g_ptr_array_add(merged, info);
+                        }
+                }
+                g_ptr_array_free(source, TRUE);
+        }
+        g_hash_table_destroy(seen);
+
+        row = set_display(self, merged);
+
+        label_markup = g_markup_printf_escaped(
+                "<big>Search results for \xe2\x80\x9c%s\xe2\x80\x9d</big>", term);
+        gtk_label_set_markup(GTK_LABEL(self->current_label), label_markup);
+        g_free(label_markup);
+
+        gtk_stack_set_visible_child_name(GTK_STACK(self->stack), "tracks");
+
+        if (row) {
+                gtk_list_box_select_row(GTK_LIST_BOX(self->list), row);
+        }
 }
