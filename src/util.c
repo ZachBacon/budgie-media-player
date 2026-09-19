@@ -34,6 +34,50 @@
 
 
 /**
+ * On Windows, GIO's content-type sniffing falls back to returning the raw
+ * filename extension (e.g. ".mp3") instead of a real MIME type whenever
+ * that extension has no "Content Type" registered in the Windows Registry.
+ * Map the common audio/video extensions to a synthetic MIME type so the
+ * audio/video prefix matching in search_directory() still works there.
+ */
+static const gchar *mime_from_extension(const gchar *path)
+{
+        static const struct {
+                const gchar *ext;
+                const gchar *mime;
+        } ext_map[] = {
+                { ".mp3",  "audio/x-generic" },
+                { ".flac", "audio/x-generic" },
+                { ".ogg",  "audio/x-generic" },
+                { ".oga",  "audio/x-generic" },
+                { ".opus", "audio/x-generic" },
+                { ".wav",  "audio/x-generic" },
+                { ".m4a",  "audio/x-generic" },
+                { ".aac",  "audio/x-generic" },
+                { ".wma",  "audio/x-generic" },
+                { ".ape",  "audio/x-generic" },
+                { ".mp4",  "video/x-generic" },
+                { ".m4v",  "video/x-generic" },
+                { ".mkv",  "video/x-generic" },
+                { ".avi",  "video/x-generic" },
+                { ".mov",  "video/x-generic" },
+                { ".webm", "video/x-generic" },
+                { ".wmv",  "video/x-generic" },
+                { ".flv",  "video/x-generic" },
+                { ".mpg",  "video/x-generic" },
+                { ".mpeg", "video/x-generic" },
+        };
+        guint i;
+
+        for (i = 0; i < G_N_ELEMENTS(ext_map); i++) {
+                if (g_str_has_suffix(path, ext_map[i].ext)) {
+                        return ext_map[i].mime;
+                }
+        }
+        return NULL;
+}
+
+/**
  * Using taglib we'll query the relevant tags.
  */
 static MediaInfo* media_from_file(gchar *path, GFileInfo *file_info, const gchar *file_mime)
@@ -122,6 +166,12 @@ void search_directory(const gchar *path, GList **list, int n_params, const gchar
                         } else {
                                 /* Not exactly a regex but it'll do for now */
                                 file_mime = g_file_info_get_content_type(next_file);
+                                if (file_mime && file_mime[0] == '.') {
+                                        const gchar *guessed = mime_from_extension(full_path);
+                                        if (guessed) {
+                                                file_mime = guessed;
+                                        }
+                                }
                                 for (i=0; i < n_params; i++) {
                                         if (g_str_has_prefix(file_mime, mimes[i]) && !g_str_has_suffix(full_path, ".m3u")) {
                                                 media = media_from_file(full_path, next_file, file_mime);

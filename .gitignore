@@ -19,3 +19,5 @@ stamp-*
 *.o
 src/budgie-media-player
 *.gschema.valid
+src/budgie-media-player.exe
+configure~
