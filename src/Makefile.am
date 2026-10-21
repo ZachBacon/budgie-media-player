@@ -15,7 +15,7 @@ libbudgiedb_la_CFLAGS = \
 
 libbudgiedb_la_LIBADD = \
 	$(GIO_LIBS) \
-	-lgdbm
+	$(GDBM_LIBS)
 
 budgie_media_player_SOURCES = \
 	budgie-window.c \
@@ -39,7 +39,7 @@ budgie_media_player_CFLAGS = \
 	$(GTK3_CFLAGS) \
 	$(GSTREAMER_CFLAGS) \
 	$(GSTVIDEO_CFLAGS) \
-	$(TAGLIB_FLAGS) \
+	$(TAGLIB_CFLAGS) \
 	$(AM_CFLAGS)
 
 budgie_media_player_LDADD = \

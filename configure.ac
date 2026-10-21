@@ -21,6 +21,13 @@ PKG_CHECK_MODULES([GSTVIDEO], [gstreamer-video-1.0 >= 1.0.10])
 # Taglib for .. tags
 PKG_CHECK_MODULES([TAGLIB], [taglib_c >= 1.9.1])
 
+# gdbm doesn't ship a pkg-config file, so check for it directly
+AC_CHECK_HEADER([gdbm.h], [],
+        [AC_MSG_ERROR([gdbm.h not found, install the gdbm development package])])
+AC_CHECK_LIB([gdbm], [gdbm_open], [GDBM_LIBS="-lgdbm"],
+        [AC_MSG_ERROR([libgdbm not found, install the gdbm development package])])
+AC_SUBST([GDBM_LIBS])
+
 AC_CONFIG_MACRO_DIR([m4])
 AC_CONFIG_FILES(Makefile src/Makefile data/Makefile)
 AC_OUTPUT

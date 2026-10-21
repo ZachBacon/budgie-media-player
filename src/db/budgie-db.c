@@ -94,6 +94,11 @@ static void budgie_db_init(BudgieDB *self)
         self->priv->storage_path = g_strdup_printf("%s/%s", config,
                 CONFIG_NAME);
 
+        /* A fresh account may not have a config directory yet */
+        if (g_mkdir_with_parents(config, 0700) != 0) {
+                g_warning("Unable to create %s", config);
+        }
+
         /* Open the database */
         self->priv->db = gdbm_open(self->priv->storage_path, 0,
                 GDBM_WRCREAT, 0600, NULL);

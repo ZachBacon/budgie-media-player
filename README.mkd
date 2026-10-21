@@ -14,7 +14,7 @@ On Ubuntu:
 
     $ sudo apt-get install libgtk-3-dev xdg-user-dirs \
         libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
-        libid3-dev libgdbm-dev gstreamer1.0-gtk3
+        libtagc0-dev libgdbm-dev gstreamer1.0-gtk3
 
 To build:
 

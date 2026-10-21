@@ -597,16 +597,17 @@ static GtkListBoxRow* set_display(BudgieMediaView *self, GPtrArray *results)
         /* Info label */
         gchar *info_string = NULL;
 
-        /* Do nothing when results is null */
+        /* No matches still needs to clear out the previous view */
         if (!results) {
-                return NULL;
+                results = g_ptr_array_new();
         }
 
         gtk_container_foreach(GTK_CONTAINER(self->list),
                 (GtkCallback)gtk_widget_destroy, NULL);
 
-        /* Only store one set at a time */
-        if (self->results) {
+        /* Only store one set at a time. An empty view keeps the old set
+         * so whatever is currently playing can still advance. */
+        if (self->results && results->len > 0) {
                 g_ptr_array_free(self->results, TRUE);
                 self->results = NULL;
         }
@@ -681,7 +682,11 @@ static GtkListBoxRow* set_display(BudgieMediaView *self, GPtrArray *results)
                 gtk_label_set_text(GTK_LABEL(self->current_label), "");
         }
         g_free(info_string);
-        self->results = results;
+        if (results->len > 0) {
+                self->results = results;
+        } else {
+                g_ptr_array_free(results, TRUE);
+        }
 
         return row;
 }
